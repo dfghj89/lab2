@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+
+# Data (keep placeholders)
+data/*.csv
+data/*.xlsx
+data/*.parquet
+data/*.pkl
+data/processed/*
+!data/.gitkeep
+!data/processed/.gitkeep
+
+# Outputs
+executed_notebooks/
+reports/
+figures/

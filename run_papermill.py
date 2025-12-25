@@ -1,40 +1,74 @@
+"""
+run_papermill.py
+
+Script điều phối pipeline notebook bằng papermill (theo mô tả Lab 2).
+Chạy:
+    python run_papermill.py --data_path data/online_retail.csv
+
+Mặc định chạy toàn bộ pipeline:
+- preprocessing_and_eda
+- basket_preparation
+- apriori_modelling
+- fp_growth_modelling
+- compare_apriori_fpgrowth
+"""
+
 from __future__ import annotations
-import datetime as dt
-from pathlib import Path
+
+import argparse
+import os
+from datetime import datetime
+
 import papermill as pm
 
-RAW_CSV_PATH = "data/raw/online_retail.csv"
-CLEANED_PATH = "data/processed/cleaned.parquet"
-BASKET_PATH = "data/processed/basket_bool.parquet"
 
-MIN_SUPPORT = 0.01
-MIN_CONFIDENCE = 0.3
-MIN_LIFT = 1.0
-SUPPORT_GRID = [0.03, 0.02, 0.015, 0.01, 0.0075, 0.005]
+def run_one(input_nb: str, output_nb: str, params: dict) -> None:
+    os.makedirs(os.path.dirname(output_nb), exist_ok=True)
+    pm.execute_notebook(
+        input_path=input_nb,
+        output_path=output_nb,
+        parameters=params,
+        kernel_name=None,  # use default
+    )
 
-def run_one(in_path: Path, out_path: Path, params: dict) -> None:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    pm.execute_notebook(str(in_path), str(out_path), parameters=params, log_output=True)
 
 def main() -> None:
-    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runs_dir = Path("notebooks/runs")/ts
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data_path", default="data/online_retail.csv", help="Path to online_retail.csv")
+    ap.add_argument("--country", default=None, help="Optional Country filter (e.g., 'United Kingdom')")
+    ap.add_argument("--min_support", type=float, default=0.01)
+    ap.add_argument("--min_confidence", type=float, default=0.5)
+    ap.add_argument("--min_lift", type=float, default=1.0)
+    args = ap.parse_args()
 
-    run_one(Path("notebooks/preprocessing_and_eda.ipynb"), runs_dir/"preprocessing_and_eda.run.ipynb",
-            {"raw_csv_path": RAW_CSV_PATH, "output_cleaned_path": CLEANED_PATH})
-    run_one(Path("notebooks/basket_preparation.ipynb"), runs_dir/"basket_preparation.run.ipynb",
-            {"cleaned_path": CLEANED_PATH, "output_basket_path": BASKET_PATH})
-    run_one(Path("notebooks/apriori_modelling.ipynb"), runs_dir/"apriori_modelling.run.ipynb",
-            {"basket_path": BASKET_PATH, "min_support": MIN_SUPPORT, "min_confidence": MIN_CONFIDENCE,
-             "min_lift": MIN_LIFT, "output_rules_path": "data/processed/apriori_rules.parquet"})
-    run_one(Path("notebooks/fp_growth_modelling.ipynb"), runs_dir/"fp_growth_modelling.run.ipynb",
-            {"basket_path": BASKET_PATH, "min_support": MIN_SUPPORT, "min_confidence": MIN_CONFIDENCE,
-             "min_lift": MIN_LIFT, "output_rules_path": "data/processed/fpgrowth_rules.parquet"})
-    run_one(Path("notebooks/compare_apriori_fpgrowth.ipynb"), runs_dir/"compare_apriori_fpgrowth.run.ipynb",
-            {"basket_path": BASKET_PATH, "support_grid": SUPPORT_GRID, "min_confidence": MIN_CONFIDENCE,
-             "min_lift": MIN_LIFT, "output_metrics_path": "data/processed/compare_metrics.csv"})
-    print(f"Done. Outputs saved to: {runs_dir}")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = os.path.join("executed_notebooks", stamp)
+    os.makedirs(out_dir, exist_ok=True)
+
+    params = dict(
+        DATA_PATH=args.data_path,
+        COUNTRY=args.country,
+        MIN_SUPPORT=args.min_support,
+        MIN_CONFIDENCE=args.min_confidence,
+        MIN_LIFT=args.min_lift,
+    )
+
+    notebooks = [
+        "preprocessing_and_eda.ipynb",
+        "basket_preparation.ipynb",
+        "apriori_modelling.ipynb",
+        "fp_growth_modelling.ipynb",
+        "compare_apriori_fpgrowth.ipynb",
+    ]
+
+    for nb in notebooks:
+        in_path = os.path.join("notebooks", nb)
+        out_path = os.path.join(out_dir, nb)
+        print(f"Running {in_path} -> {out_path}")
+        run_one(in_path, out_path, params)
+
+    print(f"Done. Executed notebooks saved to: {out_dir}")
+
 
 if __name__ == "__main__":
     main()
