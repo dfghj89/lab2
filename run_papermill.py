@@ -1,86 +1,40 @@
-import os
+from __future__ import annotations
+import datetime as dt
+from pathlib import Path
 import papermill as pm
 
-# Run notebooks end-to-end (classification + regression + ARIMA)
-os.makedirs("notebooks/runs", exist_ok=True)
+RAW_CSV_PATH = "data/raw/online_retail.csv"
+CLEANED_PATH = "data/processed/cleaned.parquet"
+BASKET_PATH = "data/processed/basket_bool.parquet"
 
-KERNEL = "beijing_env"
+MIN_SUPPORT = 0.01
+MIN_CONFIDENCE = 0.3
+MIN_LIFT = 1.0
+SUPPORT_GRID = [0.03, 0.02, 0.015, 0.01, 0.0075, 0.005]
 
-pm.execute_notebook(
-    "notebooks/preprocessing_and_eda.ipynb",
-    "notebooks/runs/preprocessing_and_eda_run.ipynb",
-    parameters=dict(
-        USE_UCIMLREPO=False,
-        RAW_ZIP_PATH="data/raw/PRSA2017_Data_20130301-20170228.zip",
-        OUTPUT_CLEANED_PATH="data/processed/cleaned.parquet",
-        LAG_HOURS=[1, 3, 24],
-    ),
-    language="python",
-    kernel_name=KERNEL,
-)
+def run_one(in_path: Path, out_path: Path, params: dict) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pm.execute_notebook(str(in_path), str(out_path), parameters=params, log_output=True)
 
-pm.execute_notebook(
-    "notebooks/feature_preparation.ipynb",
-    "notebooks/runs/feature_preparation_run.ipynb",
-    parameters=dict(
-        CLEANED_PATH="data/processed/cleaned.parquet",
-        OUTPUT_DATASET_PATH="data/processed/dataset_for_clf.parquet",
-        DROP_ROWS_WITHOUT_TARGET=True,
-    ),
-    language="python",
-    kernel_name=KERNEL,
-)
+def main() -> None:
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    runs_dir = Path("notebooks/runs")/ts
+    runs_dir.mkdir(parents=True, exist_ok=True)
 
-pm.execute_notebook(
-    "notebooks/classification_modelling.ipynb",
-    "notebooks/runs/classification_modelling_run.ipynb",
-    parameters=dict(
-        DATASET_PATH="data/processed/dataset_for_clf.parquet",
-        CUTOFF="2017-01-01",
-        METRICS_PATH="data/processed/metrics.json",
-        PRED_SAMPLE_PATH="data/processed/predictions_sample.csv",
-    ),
-    language="python",
-    kernel_name=KERNEL,
-)
+    run_one(Path("notebooks/preprocessing_and_eda.ipynb"), runs_dir/"preprocessing_and_eda.run.ipynb",
+            {"raw_csv_path": RAW_CSV_PATH, "output_cleaned_path": CLEANED_PATH})
+    run_one(Path("notebooks/basket_preparation.ipynb"), runs_dir/"basket_preparation.run.ipynb",
+            {"cleaned_path": CLEANED_PATH, "output_basket_path": BASKET_PATH})
+    run_one(Path("notebooks/apriori_modelling.ipynb"), runs_dir/"apriori_modelling.run.ipynb",
+            {"basket_path": BASKET_PATH, "min_support": MIN_SUPPORT, "min_confidence": MIN_CONFIDENCE,
+             "min_lift": MIN_LIFT, "output_rules_path": "data/processed/apriori_rules.parquet"})
+    run_one(Path("notebooks/fp_growth_modelling.ipynb"), runs_dir/"fp_growth_modelling.run.ipynb",
+            {"basket_path": BASKET_PATH, "min_support": MIN_SUPPORT, "min_confidence": MIN_CONFIDENCE,
+             "min_lift": MIN_LIFT, "output_rules_path": "data/processed/fpgrowth_rules.parquet"})
+    run_one(Path("notebooks/compare_apriori_fpgrowth.ipynb"), runs_dir/"compare_apriori_fpgrowth.run.ipynb",
+            {"basket_path": BASKET_PATH, "support_grid": SUPPORT_GRID, "min_confidence": MIN_CONFIDENCE,
+             "min_lift": MIN_LIFT, "output_metrics_path": "data/processed/compare_metrics.csv"})
+    print(f"Done. Outputs saved to: {runs_dir}")
 
-# --- NEW: Regression (supervised, lag-based) ---
-pm.execute_notebook(
-    "notebooks/regression_modelling.ipynb",
-    "notebooks/runs/regression_modelling_run.ipynb",
-    parameters=dict(
-        USE_UCIMLREPO=False,
-        RAW_ZIP_PATH="data/raw/PRSA2017_Data_20130301-20170228.zip",
-        LAG_HOURS=[1, 3, 24],
-        HORIZON=1,
-        TARGET_COL="PM2.5",
-        OUTPUT_REG_DATASET_PATH="data/processed/dataset_for_regression.parquet",
-        CUTOFF="2017-01-01",
-        MODEL_OUT="regressor.joblib",
-        METRICS_OUT="regression_metrics.json",
-        PRED_SAMPLE_OUT="regression_predictions_sample.csv",
-    ),
-    language="python",
-    kernel_name=KERNEL,
-)
-
-# --- NEW: Time-series forecasting with ARIMA only ---
-pm.execute_notebook(
-    "notebooks/arima_forecasting.ipynb",
-    "notebooks/runs/arima_forecasting_run.ipynb",
-    parameters=dict(
-        RAW_ZIP_PATH="data/raw/PRSA2017_Data_20130301-20170228.zip",
-        STATION="Aotizhongxin",
-        VALUE_COL="PM2.5",
-        CUTOFF="2017-01-01",
-        P_MAX=3,
-        Q_MAX=3,
-        D_MAX=2,
-        IC="aic",
-        ARTIFACTS_PREFIX="arima_pm25",
-    ),
-    language="python",
-    kernel_name=KERNEL,
-)
-
-print("Đã chạy xong pipeline (classification + regression + ARIMA)")
+if __name__ == "__main__":
+    main()
